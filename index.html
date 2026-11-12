@@ -1,0 +1,761 @@
+<!doctype html>
+<title>看盘</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+
+<style>
+/* ════════════════════════════════════════════════════════════════
+   同花顺深色看盘终端 — Token System
+   Layout: Fixed app shell, 3-column (sidebar | main | right)
+   ════════════════════════════════════════════════════════════════ */
+:root {
+  --c-base: #0b0d14;
+  --c-panel: #10131f;
+  --c-card: #161b2c;
+  --c-hover: #1c2240;
+  --c-active: #1a3060;
+  --c-border: #1e2d45;
+  --c-border2: #2a3f63;
+
+  --c-text1: #c8d4e8;
+  --c-text2: #7889a8;
+  --c-text3: #445570;
+
+  --c-up: #e84646;
+  --c-up-bg: rgba(232,70,70,0.1);
+  --c-down: #0dbf6e;
+  --c-down-bg: rgba(13,191,110,0.1);
+  --c-flat: #7889a8;
+
+  --c-accent: #2979ff;
+  --c-accent-bg: rgba(41,121,255,0.12);
+
+  --f-mono: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+  --f-ui: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  color-scheme: dark;
+  font-family: var(--f-ui);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; background: var(--c-base); color: var(--c-text1); }
+
+/* App shell layout */
+.app { display: flex; flex-direction: column; height: 100%; }
+.topbar { height: 44px; flex-shrink: 0; background: var(--c-panel); border-bottom: 1px solid var(--c-border); display: flex; align-items: center; padding: 0 max(16px, env(safe-area-inset-left, 0px)) 0 max(16px, env(safe-area-inset-right, 0px)); gap: 16px; }
+.topbar-brand { font-size: 16px; font-weight: 600; color: var(--c-text1); }
+.topbar-search { position: relative; flex: 0 0 240px; }
+.topbar-search input { width: 100%; height: 28px; padding: 0 10px; background: var(--c-card); border: 1px solid var(--c-border); border-radius: 4px; color: var(--c-text1); font-size: 12px; outline: none; }
+.topbar-search input:focus { border-color: var(--c-accent); }
+.search-dropdown { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: var(--c-card); border: 1px solid var(--c-border2); border-radius: 4px; max-height: 300px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+.search-dropdown.hidden { display: none; }
+.search-item { padding: 8px 12px; cursor: pointer; display: flex; justify-content: space-between; font-size: 12px; border-bottom: 1px solid var(--c-border); }
+.search-item:last-child { border-bottom: none; }
+.search-item:hover { background: var(--c-hover); }
+.search-code { color: var(--c-text2); font-family: var(--f-mono); }
+.topbar-indices { flex: 1; display: flex; gap: 20px; font-size: 12px; overflow-x: auto; }
+.idx-item { white-space: nowrap; }
+.idx-name { color: var(--c-text2); margin-right: 6px; }
+.topbar-status { font-size: 11px; color: var(--c-text3); }
+
+.app-body { flex: 1; display: flex; overflow: hidden; }
+.sidebar { width: 180px; flex-shrink: 0; background: var(--c-panel); border-right: 1px solid var(--c-border); display: flex; flex-direction: column; overflow: hidden; }
+.sidebar-header { padding: 12px 14px; border-bottom: 1px solid var(--c-border); font-size: 12px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+.tab-count { background: var(--c-accent-bg); color: var(--c-accent); padding: 2px 6px; border-radius: 3px; font-size: 11px; }
+.watchlist { flex: 1; overflow-y: auto; }
+.watch-item { padding: 10px 14px; border-bottom: 1px solid var(--c-border); cursor: pointer; }
+.watch-item:hover { background: var(--c-hover); }
+.watch-item.active { background: var(--c-active); }
+.watch-name { font-size: 12px; margin-bottom: 4px; }
+.watch-code { font-size: 11px; color: var(--c-text3); font-family: var(--f-mono); }
+.watch-price { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 12px; font-family: var(--f-mono); }
+.watch-pct { font-size: 11px; padding: 2px 4px; border-radius: 2px; }
+
+.center { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--c-base); }
+.quote-header { padding: 14px 20px; background: var(--c-panel); border-bottom: 1px solid var(--c-border); min-height: 90px; }
+.quote-empty { color: var(--c-text3); font-size: 13px; line-height: 60px; text-align: center; }
+.quote-data.hidden { display: none; }
+.quote-title { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.quote-name { font-size: 16px; font-weight: 600; }
+.quote-code { font-size: 12px; color: var(--c-text3); font-family: var(--f-mono); }
+.btn-watch { padding: 4px 10px; font-size: 11px; background: var(--c-card); border: 1px solid var(--c-border); border-radius: 4px; cursor: pointer; color: var(--c-text2); }
+.btn-watch:hover { background: var(--c-hover); border-color: var(--c-border2); }
+.quote-main { display: flex; align-items: baseline; gap: 14px; margin-bottom: 10px; }
+.quote-price { font-size: 28px; font-weight: 600; font-family: var(--f-mono); }
+.quote-change { font-size: 16px; font-family: var(--f-mono); }
+.quote-pct { font-size: 16px; font-family: var(--f-mono); }
+.quote-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 6px 14px; font-size: 11px; }
+.stat { display: flex; gap: 4px; }
+.stat-label { color: var(--c-text3); }
+.stat-value { font-family: var(--f-mono); color: var(--c-text1); }
+
+.chart-tabs { display: flex; align-items: center; gap: 4px; padding: 6px 16px; background: var(--c-panel); border-bottom: 1px solid var(--c-border); }
+.tab-btn { padding: 5px 12px; font-size: 12px; background: transparent; border: none; color: var(--c-text2); cursor: pointer; border-radius: 3px; }
+.tab-btn:hover { background: var(--c-hover); }
+.tab-btn.active { background: var(--c-accent-bg); color: var(--c-accent); }
+.tab-spacer { flex: 1; }
+.adj-label { font-size: 11px; color: var(--c-text3); }
+
+.chart-wrap { flex: 1; position: relative; min-height: 0; }
+#chart { width: 100%; height: 100%; }
+.chart-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(11,13,20,0.8); z-index: 10; }
+.chart-loading.hidden, .chart-empty.hidden { display: none; }
+.loading-spinner { width: 32px; height: 32px; border: 3px solid var(--c-border2); border-top-color: var(--c-accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.chart-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--c-text3); font-size: 13px; }
+
+.lower-section { height: 180px; flex-shrink: 0; display: flex; border-top: 1px solid var(--c-border); }
+.orderbook { width: 200px; flex-shrink: 0; background: var(--c-panel); border-right: 1px solid var(--c-border); padding: 10px; font-size: 11px; overflow-y: auto; }
+.ob-title { font-weight: 600; margin-bottom: 8px; font-size: 12px; }
+.ob-row { display: grid; grid-template-columns: 32px 1fr 52px 48px; gap: 4px; align-items: center; padding: 2px 0; }
+.ob-label { color: var(--c-text3); font-size: 10px; }
+.ob-vol-bar { height: 12px; background: var(--c-border); border-radius: 2px; position: relative; overflow: hidden; }
+.ob-vol-fill { height: 100%; background: var(--c-accent-bg); transition: width 0.3s; }
+.ob-price { font-family: var(--f-mono); text-align: right; }
+.ob-vol { font-family: var(--f-mono); text-align: right; color: var(--c-text3); font-size: 10px; }
+.ob-center { margin: 6px 0; padding: 6px 4px; background: var(--c-card); border-radius: 3px; text-align: center; font-family: var(--f-mono); font-size: 12px; }
+.ask-fill { background: var(--c-down-bg); }
+.bid-fill { background: var(--c-up-bg); }
+
+.trades { flex: 1; background: var(--c-panel); padding: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.trades-header { display: grid; grid-template-columns: 60px 1fr 1fr 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--c-border); font-size: 11px; color: var(--c-text3); font-weight: 600; margin-bottom: 6px; }
+.trades-body { flex: 1; overflow-y: auto; font-size: 11px; }
+.trade-row { display: grid; grid-template-columns: 60px 1fr 1fr 1fr; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--c-border); }
+.trade-row:last-child { border-bottom: none; }
+.trade-time { color: var(--c-text3); }
+.trade-price { font-family: var(--f-mono); }
+.trade-vol { font-family: var(--f-mono); text-align: right; }
+.trade-dir { text-align: center; font-size: 10px; }
+
+.right-panel { width: 240px; flex-shrink: 0; background: var(--c-panel); border-left: 1px solid var(--c-border); display: flex; flex-direction: column; overflow: hidden; }
+.panel-tabs { display: flex; border-bottom: 1px solid var(--c-border); }
+.ptab { flex: 1; padding: 10px; font-size: 12px; background: transparent; border: none; color: var(--c-text2); cursor: pointer; border-bottom: 2px solid transparent; }
+.ptab.active { color: var(--c-text1); border-bottom-color: var(--c-accent); }
+.ptab:hover { background: var(--c-hover); }
+
+#rankView, #basicView { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+#basicView.hidden { display: none; }
+.rank-tabs { display: flex; padding: 8px; gap: 4px; border-bottom: 1px solid var(--c-border); }
+.rtab { flex: 1; padding: 6px 0; font-size: 11px; background: transparent; border: none; color: var(--c-text2); cursor: pointer; border-radius: 3px; }
+.rtab.active { background: var(--c-accent-bg); color: var(--c-accent); }
+.rtab:hover { background: var(--c-hover); }
+.rank-header { display: grid; grid-template-columns: 1fr 60px 60px; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--c-border); font-size: 11px; color: var(--c-text3); font-weight: 600; }
+.rank-body { flex: 1; overflow-y: auto; font-size: 11px; }
+.rank-row { display: grid; grid-template-columns: 1fr 60px 60px; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--c-border); cursor: pointer; }
+.rank-row:hover { background: var(--c-hover); }
+.rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-code { font-size: 10px; color: var(--c-text3); font-family: var(--f-mono); }
+.rank-price { font-family: var(--f-mono); text-align: right; }
+.rank-pct { font-family: var(--f-mono); text-align: right; }
+
+.basic-body { flex: 1; overflow-y: auto; padding: 12px; font-size: 12px; }
+.basic-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--c-border); }
+.basic-label { color: var(--c-text3); }
+.basic-value { font-family: var(--f-mono); color: var(--c-text1); text-align: right; }
+
+.up-color { color: var(--c-up); }
+.down-color { color: var(--c-down); }
+.flat-color { color: var(--c-flat); }
+.loading-row { padding: 20px; text-align: center; color: var(--c-text3); font-size: 12px; }
+
+@media (max-width: 900px) {
+  .right-panel { display: none; }
+}
+@media (max-width: 640px) {
+  .sidebar { width: 60px; }
+  .sidebar-header span:first-child { display: none; }
+  .watch-name, .watch-code, .watch-price { font-size: 10px; }
+  .topbar-indices { display: none; }
+}
+</style>
+
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="topbar-brand">看盘</div>
+    <div class="topbar-search">
+      <input type="text" id="searchInput" placeholder="搜索股票代码/名称" autocomplete="off">
+      <div id="searchResults" class="search-dropdown hidden"></div>
+    </div>
+    <div class="topbar-indices" id="topbarIndices"></div>
+    <div class="topbar-status" id="marketStatus"></div>
+  </header>
+
+  <div class="app-body">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span>自选</span>
+        <span class="tab-count" id="watchCount">0</span>
+      </div>
+      <div class="watchlist" id="watchlist"></div>
+    </aside>
+
+    <main class="center">
+      <div class="quote-header" id="quoteHeader">
+        <div class="quote-empty" id="quoteEmpty">请搜索并选择股票</div>
+        <div class="quote-data hidden" id="quoteData">
+          <div class="quote-title">
+            <span class="quote-name" id="quoteName"></span>
+            <span class="quote-code" id="quoteCode"></span>
+            <button class="btn-watch" id="btnWatch">加自选</button>
+          </div>
+          <div class="quote-main">
+            <span class="quote-price" id="quotePrice">--</span>
+            <span class="quote-change" id="quoteChange">--</span>
+            <span class="quote-pct" id="quotePct">--</span>
+          </div>
+          <div class="quote-stats" id="quoteStats"></div>
+        </div>
+      </div>
+
+      <div class="chart-tabs" id="chartTabs">
+        <button class="tab-btn active" data-tab="timeline">分时</button>
+        <button class="tab-btn" data-tab="5m">5分</button>
+        <button class="tab-btn" data-tab="15m">15分</button>
+        <button class="tab-btn" data-tab="30m">30分</button>
+        <button class="tab-btn" data-tab="60m">60分</button>
+        <button class="tab-btn" data-tab="daily">日K</button>
+        <div class="tab-spacer"></div>
+        <span class="adj-label">前复权</span>
+      </div>
+
+      <div class="chart-wrap">
+        <div id="chart"></div>
+        <div class="chart-loading hidden" id="chartLoading"><div class="loading-spinner"></div></div>
+        <div class="chart-empty hidden" id="chartEmpty">暂无数据</div>
+      </div>
+
+      <div class="lower-section">
+        <div class="orderbook">
+          <div class="ob-title">五档盘口</div>
+          <div id="obAsks"></div>
+          <div class="ob-center" id="obCenter">--</div>
+          <div id="obBids"></div>
+        </div>
+        <div class="trades">
+          <div class="ob-title">成交明细</div>
+          <div class="trades-header">
+            <span>时间</span><span>价格</span><span>手数</span><span>方向</span>
+          </div>
+          <div class="trades-body" id="tradesBody"></div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="right-panel">
+      <div class="panel-tabs">
+        <button class="ptab active" data-view="rank">涨幅榜</button>
+        <button class="ptab" data-view="basic">基本面</button>
+      </div>
+      <div id="rankView">
+        <div class="rank-tabs">
+          <button class="rtab active" data-type="up">涨幅</button>
+          <button class="rtab" data-type="down">跌幅</button>
+          <button class="rtab" data-type="turnover">换手</button>
+        </div>
+        <div class="rank-header">
+          <span>名称</span><span>现价</span><span>涨跌幅</span>
+        </div>
+        <div class="rank-body" id="rankBody">
+          <div class="loading-row">加载中...</div>
+        </div>
+      </div>
+      <div id="basicView" class="hidden">
+        <div class="basic-body" id="basicBody"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+const API = 'http://127.0.0.1:8000/api';
+const state = {
+  code: '',
+  name: '',
+  tab: 'timeline',
+  watchlist: JSON.parse(localStorage.getItem('watchlist') || '[]'),
+  chart: null,
+  spotTimer: null,
+  rankType: 'up',
+  viewMode: 'rank',
+  preClose: 0,
+};
+
+async function api(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  const json = await res.json();
+  if (json.code !== 0) throw new Error(json.msg || 'API error');
+  return json.data;
+}
+
+function fmt(val, digits = 2) {
+  return typeof val === 'number' ? val.toFixed(digits) : '--';
+}
+
+function fmtVol(v) {
+  if (v >= 1e8) return (v / 1e8).toFixed(2) + '亿';
+  if (v >= 1e4) return (v / 1e4).toFixed(0) + '万';
+  return v.toFixed(0);
+}
+
+function colorClass(val) {
+  if (val > 0) return 'up-color';
+  if (val < 0) return 'down-color';
+  return 'flat-color';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Search
+// ═══════════════════════════════════════════════════════════════
+const searchInput = document.getElementById('searchInput');
+const searchResults = document.getElementById('searchResults');
+
+searchInput.addEventListener('input', async (e) => {
+  const q = e.target.value.trim();
+  if (q.length < 1) {
+    searchResults.classList.add('hidden');
+    return;
+  }
+  try {
+    const data = await api(`/search?q=${encodeURIComponent(q)}`);
+    if (data.length === 0) {
+      searchResults.innerHTML = '<div class="search-item">无结果</div>';
+    } else {
+      searchResults.innerHTML = data.map(s =>
+        `<div class="search-item" data-code="${s.code}" data-name="${s.name}">
+          <span>${s.name}</span>
+          <span class="search-code">${s.code}</span>
+        </div>`
+      ).join('');
+    }
+    searchResults.classList.remove('hidden');
+  } catch (err) {
+    console.error('search:', err);
+  }
+});
+
+searchResults.addEventListener('click', (e) => {
+  const item = e.target.closest('.search-item');
+  if (item) {
+    const code = item.dataset.code;
+    const name = item.dataset.name;
+    if (code) selectStock(code, name);
+    searchResults.classList.add('hidden');
+    searchInput.value = '';
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.topbar-search')) {
+    searchResults.classList.add('hidden');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Watchlist
+// ═══════════════════════════════════════════════════════════════
+function renderWatchlist() {
+  const el = document.getElementById('watchlist');
+  document.getElementById('watchCount').textContent = state.watchlist.length;
+  if (state.watchlist.length === 0) {
+    el.innerHTML = '<div class="loading-row">暂无自选</div>';
+    return;
+  }
+  el.innerHTML = state.watchlist.map(w => `
+    <div class="watch-item ${w.code === state.code ? 'active' : ''}" data-code="${w.code}" data-name="${w.name}">
+      <div class="watch-name">${w.name}</div>
+      <div class="watch-code">${w.code}</div>
+      <div class="watch-price">
+        <span class="${colorClass(w.pct || 0)}">${fmt(w.price)}</span>
+        <span class="watch-pct ${colorClass(w.pct || 0)}" style="background:${w.pct > 0 ? 'var(--c-up-bg)' : w.pct < 0 ? 'var(--c-down-bg)' : 'transparent'}">${w.pct > 0 ? '+' : ''}${fmt(w.pct)}%</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+document.getElementById('watchlist').addEventListener('click', (e) => {
+  const item = e.target.closest('.watch-item');
+  if (item) selectStock(item.dataset.code, item.dataset.name);
+});
+
+function addToWatchlist() {
+  if (!state.code) return;
+  if (state.watchlist.some(w => w.code === state.code)) {
+    state.watchlist = state.watchlist.filter(w => w.code !== state.code);
+    document.getElementById('btnWatch').textContent = '加自选';
+  } else {
+    state.watchlist.push({ code: state.code, name: state.name, price: 0, pct: 0 });
+    document.getElementById('btnWatch').textContent = '已自选';
+  }
+  localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
+  renderWatchlist();
+}
+
+document.getElementById('btnWatch').addEventListener('click', addToWatchlist);
+
+// ═══════════════════════════════════════════════════════════════
+// Select stock & load data
+// ═══════════════════════════════════════════════════════════════
+async function selectStock(code, name) {
+  state.code = code;
+  state.name = name;
+  document.getElementById('quoteEmpty').classList.add('hidden');
+  document.getElementById('quoteData').classList.remove('hidden');
+  document.getElementById('quoteName').textContent = name;
+  document.getElementById('quoteCode').textContent = code;
+  document.getElementById('btnWatch').textContent = state.watchlist.some(w => w.code === code) ? '已自选' : '加自选';
+  renderWatchlist();
+  clearInterval(state.spotTimer);
+  await loadSpot(code);
+  await loadChart(code, state.tab);
+  startAutoRefresh();
+  if (state.viewMode === 'basic') loadBasic(code);
+}
+
+async function loadSpot(code) {
+  try {
+    const data = await api(`/spot?code=${code}`);
+    state.preClose = data.pre_close || 0;
+    updateQuote(data);
+    updateOrderbook(data.bids, data.asks, data.price);
+    const idx = state.watchlist.findIndex(w => w.code === code);
+    if (idx !== -1) {
+      state.watchlist[idx].price = data.price;
+      state.watchlist[idx].pct = data.pct;
+      localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
+      renderWatchlist();
+    }
+  } catch (err) {
+    console.error('loadSpot:', err);
+  }
+}
+
+function updateQuote(data) {
+  document.getElementById('quotePrice').textContent = fmt(data.price);
+  document.getElementById('quotePrice').className = 'quote-price ' + colorClass(data.pct);
+  const chg = `${data.change >= 0 ? '▲' : '▼'} ${data.change >= 0 ? '+' : ''}${fmt(data.change)}`;
+  document.getElementById('quoteChange').textContent = chg;
+  document.getElementById('quoteChange').className = 'quote-change ' + colorClass(data.pct);
+  const pct = `(${data.pct >= 0 ? '+' : ''}${fmt(data.pct)}%)`;
+  document.getElementById('quotePct').textContent = pct;
+  document.getElementById('quotePct').className = 'quote-pct ' + colorClass(data.pct);
+  document.getElementById('quoteStats').innerHTML = `
+    <div class="stat"><span class="stat-label">今开:</span><span class="stat-value">${fmt(data.open)}</span></div>
+    <div class="stat"><span class="stat-label">昨收:</span><span class="stat-value">${fmt(data.pre_close)}</span></div>
+    <div class="stat"><span class="stat-label">最高:</span><span class="stat-value">${fmt(data.high)}</span></div>
+    <div class="stat"><span class="stat-label">最低:</span><span class="stat-value">${fmt(data.low)}</span></div>
+    <div class="stat"><span class="stat-label">成交量:</span><span class="stat-value">${fmtVol(data.volume)}</span></div>
+    <div class="stat"><span class="stat-label">成交额:</span><span class="stat-value">${fmtVol(data.amount)}</span></div>
+    <div class="stat"><span class="stat-label">换手率:</span><span class="stat-value">${fmt(data.turnover)}%</span></div>
+    <div class="stat"><span class="stat-label">量比:</span><span class="stat-value">${fmt(data.vol_ratio)}</span></div>
+    <div class="stat"><span class="stat-label">市盈率:</span><span class="stat-value">${fmt(data.pe)}</span></div>
+    <div class="stat"><span class="stat-label">市净率:</span><span class="stat-value">${fmt(data.pb)}</span></div>
+    <div class="stat"><span class="stat-label">总市值:</span><span class="stat-value">${fmtVol(data.market_cap)}</span></div>
+    <div class="stat"><span class="stat-label">流通市值:</span><span class="stat-value">${fmtVol(data.circ_cap)}</span></div>
+  `;
+}
+
+function updateOrderbook(bids, asks, price) {
+  const maxVol = Math.max(...bids.map(b => b.vol), ...asks.map(a => a.vol));
+  const renderRow = (label, p, v, isAsk) => {
+    const pct = maxVol > 0 ? (v / maxVol * 100).toFixed(0) : 0;
+    const cls = isAsk ? 'down-color' : 'up-color';
+    const fillCls = isAsk ? 'ask-fill' : 'bid-fill';
+    return `<div class="ob-row">
+      <span class="ob-label">${label}</span>
+      <div class="ob-vol-bar"><div class="ob-vol-fill ${fillCls}" style="width:${pct}%"></div></div>
+      <span class="ob-price ${cls}">${fmt(p)}</span>
+      <span class="ob-vol">${v > 0 ? fmtVol(v) : '--'}</span>
+    </div>`;
+  };
+  document.getElementById('obAsks').innerHTML = asks.slice().reverse().map((a, i) => renderRow(`卖${5 - i}`, a.price, a.vol, true)).join('');
+  document.getElementById('obBids').innerHTML = bids.map((b, i) => renderRow(`买${i + 1}`, b.price, b.vol, false)).join('');
+  const pctVal = state.preClose > 0 ? ((price - state.preClose) / state.preClose * 100) : 0;
+  document.getElementById('obCenter').innerHTML = `<span class="${colorClass(pctVal)}">${fmt(price)}</span> <span class="${colorClass(pctVal)}" style="font-size:11px">${pctVal >= 0 ? '+' : ''}${fmt(pctVal)}%</span>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Chart tabs
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('chartTabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab-btn');
+  if (btn) {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.tab = tab;
+    if (state.code) loadChart(state.code, tab);
+  }
+});
+
+async function loadChart(code, tab) {
+  const loading = document.getElementById('chartLoading');
+  const empty = document.getElementById('chartEmpty');
+  loading.classList.remove('hidden');
+  empty.classList.add('hidden');
+  try {
+    if (tab === 'timeline') {
+      const data = await api(`/timeline?code=${code}`);
+      renderTimelineChart(data.minutes, data.trades);
+    } else if (tab === 'daily') {
+      const data = await api(`/daily?code=${code}&limit=240`);
+      renderKlineChart(data, 'daily');
+    } else {
+      const data = await api(`/minute?code=${code}&period=${tab.replace('m', '')}`);
+      renderKlineChart(data, tab);
+    }
+  } catch (err) {
+    console.error('loadChart:', err);
+    empty.classList.remove('hidden');
+  } finally {
+    loading.classList.add('hidden');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Timeline chart (分时图)
+// ═══════════════════════════════════════════════════════════════
+function renderTimelineChart(minutes, trades) {
+  if (!minutes || minutes.length === 0) {
+    document.getElementById('chartEmpty').classList.remove('hidden');
+    return;
+  }
+  const times = minutes.map(m => m.time.slice(-5));
+  const prices = minutes.map(m => m.close);
+  const volumes = minutes.map(m => m.volume);
+  const avgPrices = [];
+  let sumPrice = 0, sumVol = 0;
+  minutes.forEach(m => {
+    sumPrice += m.close * m.volume;
+    sumVol += m.volume;
+    avgPrices.push(sumVol > 0 ? sumPrice / sumVol : m.close);
+  });
+  if (!state.chart) state.chart = echarts.init(document.getElementById('chart'));
+  const option = {
+    backgroundColor: 'transparent',
+    animation: false,
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      backgroundColor: '#161b2c',
+      borderColor: '#2a3f63',
+      textStyle: { color: '#c8d4e8', fontSize: 12 },
+      formatter: (params) => {
+        const idx = params[0].dataIndex;
+        const m = minutes[idx];
+        const chg = m.close - state.preClose;
+        const pct = state.preClose > 0 ? (chg / state.preClose * 100) : 0;
+        return `${times[idx]}<br/>价格: ${fmt(m.close)}<br/>均价: ${fmt(avgPrices[idx])}<br/>涨跌: ${chg >= 0 ? '+' : ''}${fmt(chg)} (${pct >= 0 ? '+' : ''}${fmt(pct)}%)<br/>量: ${fmtVol(m.volume)}`;
+      }
+    },
+    grid: [
+      { top: 10, left: 60, right: 60, bottom: '30%' },
+      { left: 60, right: 60, bottom: 40, height: '22%' }
+    ],
+    xAxis: [
+      { type: 'category', data: times, gridIndex: 0, boundaryGap: false, axisLine: { lineStyle: { color: '#1e2d45' } }, axisTick: { show: false }, axisLabel: { color: '#445570', fontSize: 11 }, splitLine: { show: false } },
+      { type: 'category', data: times, gridIndex: 1, axisLabel: { show: false }, axisTick: { show: false }, axisLine: { lineStyle: { color: '#1e2d45' } }, splitLine: { show: false } }
+    ],
+    yAxis: [
+      { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#1a2035', type: 'dashed' } }, axisLabel: { color: '#7889a8', fontSize: 11, fontFamily: 'JetBrains Mono' }, axisLine: { show: false }, axisTick: { show: false } },
+      { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { color: '#7889a8', fontSize: 10, formatter: v => fmtVol(v) }, axisLine: { show: false }, axisTick: { show: false } }
+    ],
+    series: [
+      { type: 'line', data: prices, smooth: false, symbol: 'none', lineStyle: { color: '#40c4ff', width: 1.5 }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(41,121,255,0.3)' }, { offset: 1, color: 'rgba(41,121,255,0.02)' }] } }, xAxisIndex: 0, yAxisIndex: 0 },
+      { type: 'line', data: avgPrices, smooth: false, symbol: 'none', lineStyle: { color: '#f7c948', width: 1 }, xAxisIndex: 0, yAxisIndex: 0 },
+      { type: 'bar', data: volumes.map((v, i) => ({ value: v, itemStyle: { color: prices[i] >= state.preClose ? '#e84646' : '#0dbf6e' } })), xAxisIndex: 1, yAxisIndex: 1, barMaxWidth: 4 }
+    ]
+  };
+  state.chart.setOption(option, true);
+  updateTrades(trades);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// K-line chart (K线图)
+// ═══════════════════════════════════════════════════════════════
+function renderKlineChart(data, tab) {
+  if (!data || data.length === 0) {
+    document.getElementById('chartEmpty').classList.remove('hidden');
+    return;
+  }
+  const dates = data.map(d => (d.date || d.time).slice(-10));
+  const ohlc = data.map(d => [d.open, d.close, d.low, d.high]);
+  const volumes = data.map(d => ({ value: d.volume, itemStyle: { color: d.close >= d.open ? '#e84646' : '#0dbf6e' } }));
+  const closes = data.map(d => d.close);
+  const calcMA = (n) => closes.map((_, i) => i < n - 1 ? null : closes.slice(i - n + 1, i + 1).reduce((a, b) => a + b) / n);
+  if (!state.chart) state.chart = echarts.init(document.getElementById('chart'));
+  const option = {
+    backgroundColor: 'transparent',
+    animation: false,
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross', label: { backgroundColor: '#1a2d4a' } },
+      backgroundColor: '#161b2c',
+      borderColor: '#2a3f63',
+      textStyle: { color: '#c8d4e8', fontSize: 12 },
+      formatter: (params) => {
+        const idx = params[0].dataIndex;
+        const d = data[idx];
+        const chg = d.close - d.open;
+        return `${dates[idx]}<br/>开: ${fmt(d.open)} 收: ${fmt(d.close)}<br/>高: ${fmt(d.high)} 低: ${fmt(d.low)}<br/>涨跌: ${chg >= 0 ? '+' : ''}${fmt(chg)} (${d.pct >= 0 ? '+' : ''}${fmt(d.pct || 0)}%)<br/>量: ${fmtVol(d.volume)}`;
+      }
+    },
+    legend: { data: ['MA5', 'MA10', 'MA20', 'MA60'], textStyle: { color: '#7889a8', fontSize: 11 }, top: 4, right: 60, icon: 'line' },
+    grid: [
+      { top: 36, left: 60, right: 16, bottom: '30%' },
+      { left: 60, right: 16, bottom: 40, height: '22%' }
+    ],
+    xAxis: [
+      { type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLine: { lineStyle: { color: '#1e2d45' } }, axisTick: { show: false }, axisLabel: { color: '#445570', fontSize: 11 }, splitLine: { show: false } },
+      { type: 'category', data: dates, gridIndex: 1, axisLabel: { show: false }, axisTick: { show: false }, axisLine: { lineStyle: { color: '#1e2d45' } }, splitLine: { show: false } }
+    ],
+    yAxis: [
+      { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#1a2035', type: 'dashed' } }, axisLabel: { color: '#7889a8', fontSize: 11, fontFamily: 'JetBrains Mono' }, axisLine: { show: false }, axisTick: { show: false } },
+      { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { color: '#7889a8', fontSize: 10, formatter: v => fmtVol(v) }, axisLine: { show: false }, axisTick: { show: false } }
+    ],
+    dataZoom: [
+      { type: 'inside', xAxisIndex: [0, 1], start: 70, end: 100 },
+      { type: 'slider', xAxisIndex: [0, 1], bottom: 8, height: 24, dataBackground: { lineStyle: { color: '#1e2d45' }, areaStyle: { color: '#161b2c' } }, selectedDataBackground: { lineStyle: { color: '#2979ff' }, areaStyle: { color: '#1a3060' } }, handleStyle: { color: '#2979ff' }, borderColor: '#1e2d45', textStyle: { color: '#7889a8', fontSize: 11 } }
+    ],
+    series: [
+      { type: 'candlestick', data: ohlc, xAxisIndex: 0, yAxisIndex: 0, itemStyle: { color: '#e84646', color0: '#0dbf6e', borderColor: '#e84646', borderColor0: '#0dbf6e' }, barMaxWidth: 10 },
+      { type: 'line', name: 'MA5', data: calcMA(5), smooth: false, lineStyle: { color: '#f7c948', width: 1 }, symbol: 'none', xAxisIndex: 0, yAxisIndex: 0 },
+      { type: 'line', name: 'MA10', data: calcMA(10), smooth: false, lineStyle: { color: '#40c4ff', width: 1 }, symbol: 'none', xAxisIndex: 0, yAxisIndex: 0 },
+      { type: 'line', name: 'MA20', data: calcMA(20), smooth: false, lineStyle: { color: '#e040fb', width: 1 }, symbol: 'none', xAxisIndex: 0, yAxisIndex: 0 },
+      { type: 'line', name: 'MA60', data: calcMA(60), smooth: false, lineStyle: { color: '#ff8c00', width: 1 }, symbol: 'none', xAxisIndex: 0, yAxisIndex: 0 },
+      { type: 'bar', data: volumes, xAxisIndex: 1, yAxisIndex: 1, barMaxWidth: 10 }
+    ]
+  };
+  state.chart.setOption(option, true);
+}
+
+function updateTrades(trades) {
+  if (!trades || trades.length === 0) return;
+  document.getElementById('tradesBody').innerHTML = trades.slice(0, 50).map(t => {
+    const cls = t.dir.includes('买') || t.dir.includes('B') ? 'up-color' : t.dir.includes('卖') || t.dir.includes('S') ? 'down-color' : 'flat-color';
+    return `<div class="trade-row">
+      <span class="trade-time">${t.time.slice(-8)}</span>
+      <span class="trade-price ${cls}">${fmt(t.price)}</span>
+      <span class="trade-vol">${t.vol > 0 ? fmtVol(t.vol) : '--'}</span>
+      <span class="trade-dir ${cls}">${t.dir || '--'}</span>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Rank list (涨幅榜)
+// ═══════════════════════════════════════════════════════════════
+document.querySelectorAll('.rtab').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    const type = e.target.dataset.type;
+    state.rankType = type;
+    document.querySelectorAll('.rtab').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    loadRank(type);
+  });
+});
+
+async function loadRank(type) {
+  try {
+    const data = await api(`/rank?type=${type}`);
+    document.getElementById('rankBody').innerHTML = data.map(s => `
+      <div class="rank-row" data-code="${s.code}" data-name="${s.name}">
+        <div>
+          <div class="rank-name">${s.name}</div>
+          <div class="rank-code">${s.code}</div>
+        </div>
+        <span class="rank-price ${colorClass(s.pct)}">${fmt(s.price)}</span>
+        <span class="rank-pct ${colorClass(s.pct)}">${s.pct >= 0 ? '+' : ''}${fmt(s.pct)}%</span>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('loadRank:', err);
+    document.getElementById('rankBody').innerHTML = '<div class="loading-row">加载失败</div>';
+  }
+}
+
+document.getElementById('rankBody').addEventListener('click', (e) => {
+  const row = e.target.closest('.rank-row');
+  if (row) selectStock(row.dataset.code, row.dataset.name);
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Basic info (基本面)
+// ═══════════════════════════════════════════════════════════════
+document.querySelectorAll('.ptab').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    const view = e.target.dataset.view;
+    state.viewMode = view;
+    document.querySelectorAll('.ptab').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    if (view === 'rank') {
+      document.getElementById('rankView').classList.remove('hidden');
+      document.getElementById('basicView').classList.add('hidden');
+    } else {
+      document.getElementById('rankView').classList.add('hidden');
+      document.getElementById('basicView').classList.remove('hidden');
+      if (state.code) loadBasic(state.code);
+    }
+  });
+});
+
+async function loadBasic(code) {
+  try {
+    const data = await api(`/basic?code=${code}`);
+    const rows = Object.entries(data).map(([k, v]) => `
+      <div class="basic-row">
+        <span class="basic-label">${k}</span>
+        <span class="basic-value">${v}</span>
+      </div>
+    `).join('');
+    document.getElementById('basicBody').innerHTML = rows || '<div class="loading-row">暂无数据</div>';
+  } catch (err) {
+    console.error('loadBasic:', err);
+    document.getElementById('basicBody').innerHTML = '<div class="loading-row">加载失败</div>';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Auto-refresh
+// ═══════════════════════════════════════════════════════════════
+function startAutoRefresh() {
+  clearInterval(state.spotTimer);
+  state.spotTimer = setInterval(() => {
+    if (state.code) loadSpot(state.code);
+  }, 3000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════════════
+function init() {
+  renderWatchlist();
+  loadRank('up');
+  window.addEventListener('resize', () => {
+    if (state.chart) state.chart.resize();
+  });
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const day = now.getDay();
+  const isMarketHours = day >= 1 && day <= 5 && ((h === 9 && m >= 30) || (h >= 10 && h < 11) || (h === 11 && m < 30) || (h >= 13 && h < 15));
+  document.getElementById('marketStatus').textContent = isMarketHours ? '交易中' : '休市';
+  document.getElementById('topbarIndices').innerHTML = `
+    <div class="idx-item"><span class="idx-name">上证</span><span class="up-color">3,245.67 +1.23%</span></div>
+    <div class="idx-item"><span class="idx-name">深成</span><span class="down-color">10,567.89 -0.45%</span></div>
+    <div class="idx-item"><span class="idx-name">创业板</span><span class="up-color">2,234.56 +0.87%</span></div>
+  `;
+}
+
+init();
+</script>
+</body>
+</html>
